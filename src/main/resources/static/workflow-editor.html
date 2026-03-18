@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero small-hero">
+            <div>
+                <p class="eyebrow">Workflow Editor</p>
+                <h1 id="pageTitle">Create Workflow</h1>
+                <p class="subtitle">Create a workflow, add steps, define rules, and choose the start step.</p>
+            </div>
+            <button class="secondary-btn" onclick="goHome()">Back</button>
+        </header>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Workflow Information</h2>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="workflowName">Workflow Name</label>
+                    <input type="text" id="workflowName" placeholder="Enter workflow name">
+                </div>
+
+                <div class="form-group">
+                    <label for="workflowActive">Status</label>
+                    <select id="workflowActive">
+                        <option value="true">Active</option>
+                        <option value="false">Inactive</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="startStepSelect">Start Step</label>
+                    <select id="startStepSelect">
+                        <option value="">Select start step</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group top-gap">
+                <label for="inputSchema">Input Schema (JSON)</label>
+                <textarea id="inputSchema" rows="8">{
+  "amount": {
+    "type": "number",
+    "required": true
+  },
+  "country": {
+    "type": "string",
+    "required": true
+  },
+  "department": {
+  "type": "string",
+  "required": false
+},
+  "priority": {
+    "type": "string",
+    "required": true
+  }
+}</textarea>
+                <small class="helper-text">
+                    Example JSON format. Edit the fields as needed. Use valid JSON only.
+                </small>
+            </div>
+
+            <div class="form-actions">
+                <button class="primary-btn" onclick="saveWorkflow()">Save Workflow</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Add Step</h2>
+                <span id="stepHint" class="count-badge">Save workflow first</span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="stepName">Step Name</label>
+                    <input type="text" id="stepName" placeholder="Manager Approval">
+                </div>
+
+                <div class="form-group">
+                    <label for="stepType">Step Type</label>
+                    <select id="stepType">
+                        <option value="approval">Approval</option>
+                        <option value="notification">Notification</option>
+                        <option value="task">Task</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="stepOrder">Step Order</label>
+                    <input type="number" id="stepOrder" placeholder="1">
+                </div>
+            </div>
+
+            <div class="form-group top-gap">
+                <label for="stepMetadata">Step Metadata (JSON)</label>
+                <textarea id="stepMetadata" rows="5">{
+  "assignee": "manager@example.com"
+}</textarea>
+                <small class="helper-text">
+                    Example metadata. If not needed, you can keep it as {}.
+                </small>
+            </div>
+
+            <div class="form-actions">
+                <button class="primary-btn" onclick="saveStep()">Add Step</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Add Rule</h2>
+                <span class="count-badge">Create steps before rules</span>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="ruleStepSelect">Step</label>
+                    <select id="ruleStepSelect">
+                        <option value="">Select step</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="nextStepSelect">Next Step</label>
+                    <select id="nextStepSelect">
+                        <option value="">Workflow End</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="rulePriority">Priority</label>
+                    <input type="number" id="rulePriority" placeholder="1">
+                </div>
+            </div>
+
+            <div class="form-group top-gap">
+                <label for="ruleCondition">Condition</label>
+                <input type="text" id="ruleCondition" placeholder="amount > 1000 or leave empty for DEFAULT">
+                <small class="helper-text">
+                    Example: amount > 1000. Leave empty to create a DEFAULT rule.
+                </small>
+            </div>
+
+            <div class="form-actions">
+                <button class="primary-btn" onclick="saveRule()">Add Rule</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Steps</h2>
+            </div>
+
+            <div id="stepsContainer" class="logs-container">
+                <p class="empty-row">No steps loaded.</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        const params = new URLSearchParams(window.location.search);
+        let workflowId = params.get("id");
+        let currentSteps = [];
+        let appliedTemplateKey = null;
+
+        const WORKFLOW_TEMPLATES = {
+            "expense approval": {
+                schema: {
+                    amount: { type: "number", required: true },
+                    country: { type: "string", required: true },
+                    department: { type: "string", required: false },
+                    priority: { type: "string", required: true }
+                },
+                steps: [
+                    {
+                        name: "Manager Approval",
+                        stepType: "approval",
+                        stepOrder: 1,
+                        metadata: { assignee: "manager@example.com" }
+                    },
+                    {
+                        name: "Finance Notification",
+                        stepType: "notification",
+                        stepOrder: 2,
+                        metadata: { channel: "email" }
+                    },
+                    {
+                        name: "CEO Approval",
+                        stepType: "approval",
+                        stepOrder: 3,
+                        metadata: { assignee: "ceo@example.com" }
+                    },
+                    {
+                        name: "Task Completion",
+                        stepType: "task",
+                        stepOrder: 4,
+                        metadata: { action: "complete" }
+                    }
+                ],
+                startStepName: "Manager Approval",
+                rules: [
+                    { stepName: "Manager Approval", condition: "amount > 1000", nextStepName: "Finance Notification", priority: 1 },
+                    { stepName: "Manager Approval", condition: null, nextStepName: "CEO Approval", priority: 2 },
+                    { stepName: "Finance Notification", condition: null, nextStepName: "Task Completion", priority: 1 },
+                    { stepName: "CEO Approval", condition: null, nextStepName: "Task Completion", priority: 1 }
+                ]
+            },
+            "leave approval": {
+                schema: {
+                    days: { type: "number", required: true },
+                    leaveType: { type: "string", required: true },
+                    department: { type: "string", required: false },
+                    priority: { type: "string", required: true }
+                },
+                steps: [
+                    {
+                        name: "Manager Review",
+                        stepType: "approval",
+                        stepOrder: 1,
+                        metadata: { assignee: "manager@example.com" }
+                    },
+                    {
+                        name: "HR Notification",
+                        stepType: "notification",
+                        stepOrder: 2,
+                        metadata: { channel: "email" }
+                    },
+                    {
+                        name: "Director Approval",
+                        stepType: "approval",
+                        stepOrder: 3,
+                        metadata: { assignee: "director@example.com" }
+                    },
+                    {
+                        name: "Leave Approved",
+                        stepType: "task",
+                        stepOrder: 4,
+                        metadata: { action: "approve" }
+                    },
+                    {
+                        name: "Leave Rejected",
+                        stepType: "task",
+                        stepOrder: 5,
+                        metadata: { action: "reject" }
+                    }
+                ],
+                startStepName: "Manager Review",
+                rules: [
+                    { stepName: "Manager Review", condition: "days > 5", nextStepName: "Director Approval", priority: 1 },
+                    { stepName: "Manager Review", condition: "department == 'HR'", nextStepName: "HR Notification", priority: 2 },
+                    { stepName: "Manager Review", condition: null, nextStepName: "Leave Approved", priority: 3 },
+                    { stepName: "HR Notification", condition: null, nextStepName: "Leave Approved", priority: 1 },
+                    { stepName: "Director Approval", condition: "priority == 'High'", nextStepName: "Leave Rejected", priority: 1 },
+                    { stepName: "Director Approval", condition: null, nextStepName: "Leave Approved", priority: 2 }
+                ]
+            }
+        };
+
+        async function initPage() {
+            document.getElementById("workflowName").addEventListener("input", handleWorkflowNameInput);
+            if (workflowId) {
+                document.getElementById("pageTitle").textContent = "Edit Workflow";
+                document.getElementById("stepHint").textContent = "Ready to add steps";
+                await loadWorkflow();
+            }
+        }
+
+        async function loadWorkflow() {
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to load workflow");
+                }
+
+                const workflow = result.data;
+                currentSteps = workflow.steps || [];
+
+                document.getElementById("workflowName").value = workflow.name || "";
+                document.getElementById("workflowActive").value = String(workflow.isActive);
+                document.getElementById("inputSchema").value = JSON.stringify(workflow.inputSchema || {}, null, 2);
+
+                populateStepSelects(currentSteps, workflow.startStepId);
+                renderSteps(currentSteps);
+            } catch (error) {
+                document.getElementById("stepsContainer").innerHTML =
+                    `<p class="empty-row error-text">${error.message}</p>`;
+            }
+        }
+
+        async function saveWorkflow() {
+            const name = document.getElementById("workflowName").value.trim();
+            const isActive = document.getElementById("workflowActive").value === "true";
+            const startStepId = document.getElementById("startStepSelect").value || null;
+            const inputSchemaText = document.getElementById("inputSchema").value.trim();
+
+            if (!name) {
+                alert("Workflow name is required");
+                return;
+            }
+
+            let parsedSchema = {};
+            try {
+                parsedSchema = inputSchemaText ? JSON.parse(inputSchemaText) : {};
+            } catch (error) {
+                alert("Input schema must be valid JSON");
+                return;
+            }
+
+            const payload = {
+                name,
+                inputSchema: parsedSchema,
+                startStepId,
+                isActive
+            };
+
+            try {
+                let response;
+
+                if (workflowId) {
+                    response = await fetch(`${API_BASE}/workflows/${workflowId}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    response = await fetch(`${API_BASE}/workflows`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to save workflow");
+                }
+
+                if (!workflowId) {
+                    workflowId = result.data.id;
+                    document.getElementById("pageTitle").textContent = "Edit Workflow";
+                    document.getElementById("stepHint").textContent = "Ready to add steps";
+                    history.replaceState({}, "", `workflow-editor.html?id=${workflowId}`);
+                    await autoApplyTemplateIfNeeded();
+                }
+
+                await loadWorkflow();
+                alert("Workflow saved successfully");
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function saveStep() {
+            if (!workflowId) {
+                alert("Save the workflow before adding steps");
+                return;
+            }
+
+            const name = document.getElementById("stepName").value.trim();
+            const stepType = document.getElementById("stepType").value;
+            const stepOrderValue = document.getElementById("stepOrder").value.trim();
+            const metadataText = document.getElementById("stepMetadata").value.trim();
+
+            if (!name) {
+                alert("Step name is required");
+                return;
+            }
+
+            let metadata = {};
+            try {
+                metadata = metadataText ? JSON.parse(metadataText) : {};
+            } catch (error) {
+                alert("Step metadata must be valid JSON");
+                return;
+            }
+
+            const payload = {
+                name,
+                stepType,
+                stepOrder: stepOrderValue ? Number(stepOrderValue) : null,
+                metadata
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}/steps`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to add step");
+                }
+
+                clearStepForm();
+                await loadWorkflow();
+                alert("Step added successfully");
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        async function saveRule() {
+            if (!workflowId) {
+                alert("Save the workflow before adding rules");
+                return;
+            }
+
+            const stepId = document.getElementById("ruleStepSelect").value;
+            const nextStepId = document.getElementById("nextStepSelect").value || null;
+            const priorityValue = document.getElementById("rulePriority").value.trim();
+            const conditionText = document.getElementById("ruleCondition").value.trim();
+
+            if (!stepId) {
+                alert("Select a step for the rule");
+                return;
+            }
+
+            const payload = {
+                condition: conditionText ? conditionText : null,
+                nextStepId,
+                priority: priorityValue ? Number(priorityValue) : null
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/steps/${stepId}/rules`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to add rule");
+                }
+
+                clearRuleForm();
+                await loadWorkflow();
+                alert("Rule added successfully");
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function populateStepSelects(steps, startStepId) {
+            const startStepSelect = document.getElementById("startStepSelect");
+            const ruleStepSelect = document.getElementById("ruleStepSelect");
+            const nextStepSelect = document.getElementById("nextStepSelect");
+
+            const options = steps.map(step =>
+                `<option value="${step.id}">${step.stepOrder}. ${step.name}</option>`
+            ).join("");
+
+            startStepSelect.innerHTML = `<option value="">Select start step</option>${options}`;
+            ruleStepSelect.innerHTML = `<option value="">Select step</option>${options}`;
+            nextStepSelect.innerHTML = `<option value="">Workflow End</option>${options}`;
+
+            if (startStepId) {
+                startStepSelect.value = startStepId;
+            }
+        }
+
+        function clearStepForm() {
+            document.getElementById("stepName").value = "";
+            document.getElementById("stepType").value = "approval";
+            document.getElementById("stepOrder").value = "";
+            document.getElementById("stepMetadata").value = `{
+  "assignee": "manager@example.com"
+}`;
+        }
+
+        function clearRuleForm() {
+            document.getElementById("ruleStepSelect").value = "";
+            document.getElementById("nextStepSelect").value = "";
+            document.getElementById("rulePriority").value = "";
+            document.getElementById("ruleCondition").value = "";
+        }
+
+        function normalizeTemplateKey(name) {
+            return (name || "").trim().toLowerCase();
+        }
+
+        function handleWorkflowNameInput(event) {
+            if (workflowId) {
+                return;
+            }
+
+            const key = normalizeTemplateKey(event.target.value);
+            if (!WORKFLOW_TEMPLATES[key] || appliedTemplateKey === key) {
+                return;
+            }
+
+            const template = WORKFLOW_TEMPLATES[key];
+            document.getElementById("inputSchema").value = JSON.stringify(template.schema, null, 2);
+            appliedTemplateKey = key;
+        }
+
+        async function autoApplyTemplateIfNeeded() {
+            const workflowName = document.getElementById("workflowName").value;
+            const templateKey = normalizeTemplateKey(workflowName);
+            const template = WORKFLOW_TEMPLATES[templateKey];
+
+            if (!template || currentSteps.length > 0) {
+                return;
+            }
+
+            const createdSteps = [];
+
+            for (const step of template.steps) {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}/steps`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(step)
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.message || `Failed to add template step: ${step.name}`);
+                }
+                createdSteps.push(result.data);
+            }
+
+            const stepMap = Object.fromEntries(createdSteps.map(step => [step.name, step]));
+            const startStep = stepMap[template.startStepName];
+
+            const workflowPayload = {
+                name: document.getElementById("workflowName").value.trim(),
+                inputSchema: template.schema,
+                startStepId: startStep ? startStep.id : null,
+                isActive: document.getElementById("workflowActive").value === "true"
+            };
+
+            const updateResponse = await fetch(`${API_BASE}/workflows/${workflowId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(workflowPayload)
+            });
+
+            const updateResult = await updateResponse.json();
+            if (!updateResult.success) {
+                throw new Error(updateResult.message || "Failed to update workflow start step");
+            }
+
+            for (const rule of template.rules) {
+                const sourceStep = stepMap[rule.stepName];
+                const nextStep = rule.nextStepName ? stepMap[rule.nextStepName] : null;
+
+                const ruleResponse = await fetch(`${API_BASE}/steps/${sourceStep.id}/rules`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        condition: rule.condition,
+                        nextStepId: nextStep ? nextStep.id : null,
+                        priority: rule.priority
+                    })
+                });
+
+                const ruleResult = await ruleResponse.json();
+                if (!ruleResult.success) {
+                    throw new Error(ruleResult.message || `Failed to add template rule for ${rule.stepName}`);
+                }
+            }
+        }
+
+        function renderSteps(steps) {
+            const container = document.getElementById("stepsContainer");
+
+            if (!steps.length) {
+                container.innerHTML = `<p class="empty-row">No steps available for this workflow.</p>`;
+                return;
+            }
+
+            container.innerHTML = steps.map((step, index) => `
+                <div class="log-card">
+                    <div class="log-head">
+                        <h3>Step ${index + 1}: ${step.name}</h3>
+                        <span class="status-badge active">${step.stepType}</span>
+                    </div>
+
+                    <div class="log-meta">
+                        <p><strong>Order:</strong> ${step.stepOrder}</p>
+                        <p><strong>Step ID:</strong> ${step.id}</p>
+                    </div>
+
+                    <div class="rule-block">
+                        <h4>Metadata</h4>
+                        <div class="rule-item">
+                            <pre class="json-block">${formatJson(step.metadata || {})}</pre>
+                        </div>
+                    </div>
+
+                    <div class="rule-block top-gap">
+                        <h4>Rules</h4>
+                        ${renderRules(step.rules || [])}
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        function renderRules(rules) {
+            if (!rules.length) {
+                return `<p class="muted-text">No rules available.</p>`;
+            }
+
+            return `
+                <div class="rule-list">
+                    ${rules.map(rule => `
+                        <div class="rule-item">
+                            <p><strong>Condition:</strong> ${rule.condition === null ? "DEFAULT" : rule.condition}</p>
+                            <p><strong>Priority:</strong> ${rule.priority}</p>
+                            <p><strong>Next Step ID:</strong> ${rule.nextStepId || "Workflow End"}</p>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        function formatJson(value) {
+            return JSON.stringify(value, null, 2);
+        }
+
+        function goHome() {
+            window.location.href = "index.html";
+        }
+
+        initPage();
+    </script>
+</body>
+</html>

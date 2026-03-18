@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Execution Logs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero small-hero">
+            <div>
+                <p class="eyebrow">Execution Tracking</p>
+                <h1>Execution Logs</h1>
+                <p class="subtitle">Monitor workflow progress, matched rules, and final outcomes.</p>
+            </div>
+            <button class="secondary-btn" onclick="goHome()">Back</button>
+        </header>
+
+        <section class="card">
+            <div class="section-head">
+                <h2 id="executionTitle">Loading execution...</h2>
+                <span id="executionStatus" class="count-badge">Fetching</span>
+            </div>
+
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <span class="summary-label">Workflow</span>
+                    <span id="workflowName" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Execution ID</span>
+                    <span id="executionId" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Started At</span>
+                    <span id="startedAt" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Ended At</span>
+                    <span id="endedAt" class="summary-value">-</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Step Logs</h2>
+            </div>
+
+            <div id="logsContainer" class="logs-container">
+                <p class="empty-row">Loading logs...</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        const params = new URLSearchParams(window.location.search);
+        const executionId = params.get("id");
+
+        async function loadExecutionLogs() {
+            if (!executionId) {
+                document.getElementById("executionTitle").textContent = "Execution ID missing";
+                document.getElementById("executionStatus").textContent = "Error";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/executions/${executionId}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to load execution");
+                }
+
+                const execution = result.data;
+
+                document.getElementById("executionTitle").textContent = "Execution Details";
+                document.getElementById("executionStatus").textContent = execution.status || "Unknown";
+                document.getElementById("workflowName").textContent = execution.workflowName || "-";
+                document.getElementById("executionId").textContent = execution.id || "-";
+                document.getElementById("startedAt").textContent = formatDate(execution.startedAt);
+                document.getElementById("endedAt").textContent = formatDate(execution.endedAt);
+
+                renderLogs(execution.logs || []);
+            } catch (error) {
+                document.getElementById("executionTitle").textContent = "Failed to load execution";
+                document.getElementById("executionStatus").textContent = "Error";
+                document.getElementById("logsContainer").innerHTML =
+                    `<p class="empty-row error-text">${error.message}</p>`;
+            }
+        }
+
+        function renderLogs(logs) {
+            const container = document.getElementById("logsContainer");
+
+            if (!logs.length) {
+                container.innerHTML = `<p class="empty-row">No logs available.</p>`;
+                return;
+            }
+
+            container.innerHTML = logs.map((log, index) => `
+                <div class="log-card">
+                    <div class="log-head">
+                        <h3>Step ${index + 1}: ${log.stepName}</h3>
+                        <span class="status-badge ${getStatusClass(log.status)}">${log.status}</span>
+                    </div>
+
+                    <div class="log-meta">
+                        <p><strong>Type:</strong> ${log.stepType || "-"}</p>
+                        <p><strong>Next Step:</strong> ${log.selectedNextStepName || "Workflow End"}</p>
+                        <p><strong>Duration:</strong> ${log.durationMs} ms</p>
+                        <p><strong>Started:</strong> ${formatDate(log.startedAt)}</p>
+                        <p><strong>Ended:</strong> ${formatDate(log.endedAt)}</p>
+                    </div>
+
+                    <div class="rule-block">
+                        <h4>Evaluated Rules</h4>
+                        ${renderRules(log.evaluatedRules || [])}
+                    </div>
+
+                    ${log.errorMessage ? `<p class="error-text"><strong>Error:</strong> ${log.errorMessage}</p>` : ""}
+                </div>
+            `).join("");
+        }
+
+        function renderRules(rules) {
+            if (!rules.length) {
+                return `<p class="muted-text">No rules evaluated.</p>`;
+            }
+
+            return `
+                <div class="rule-list">
+                    ${rules.map(rule => `
+                        <div class="rule-item">
+                            <p><strong>Condition:</strong> ${rule.condition}</p>
+                            <p><strong>Priority:</strong> ${rule.priority}</p>
+                            <p><strong>Matched:</strong> ${rule.matched ? "Yes" : "No"}</p>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        }
+
+        function getStatusClass(status) {
+            if (!status) return "inactive";
+            const value = status.toUpperCase();
+
+            if (value === "SUCCESS" || value === "COMPLETED") return "active";
+            if (value === "FAILED") return "inactive";
+            return "inactive";
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return "-";
+            return new Date(dateString).toLocaleString();
+        }
+
+        function goHome() {
+            window.location.href = "index.html";
+        }
+
+        loadExecutionLogs();
+    </script>
+</body>
+</html>

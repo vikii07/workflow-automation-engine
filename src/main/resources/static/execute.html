@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Execute Workflow</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero small-hero">
+            <div>
+                <p class="eyebrow">Workflow Execution</p>
+                <h1>Run Workflow</h1>
+                <p class="subtitle">Enter workflow input data dynamically based on the selected workflow schema.</p>
+            </div>
+            <button class="secondary-btn" onclick="goHome()">Back</button>
+        </header>
+
+        <section class="card">
+            <div class="section-head">
+                <h2 id="workflowTitle">Loading workflow...</h2>
+                <span id="workflowStatus" class="count-badge">Preparing</span>
+            </div>
+
+            <div id="schemaInfo" class="helper-text"></div>
+            <div id="dynamicForm" class="form-grid top-gap">
+                <p class="empty-row">Loading input fields...</p>
+            </div>
+
+            <div class="form-actions">
+                <button class="primary-btn" onclick="executeWorkflow()">Start Execution</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Execution Result</h2>
+            </div>
+
+            <div id="resultBox" class="result-box">
+                No execution started yet.
+            </div>
+        </section>
+    </div>
+
+    <script>
+		const API_BASE = "";
+        const params = new URLSearchParams(window.location.search);
+        const workflowId = params.get("id");
+        let workflowSchema = {};
+
+        async function loadWorkflow() {
+            if (!workflowId) {
+                document.getElementById("workflowTitle").textContent = "Workflow ID missing";
+                document.getElementById("workflowStatus").textContent = "Error";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to load workflow");
+                }
+
+                const workflow = result.data;
+                workflowSchema = workflow.inputSchema || {};
+
+                document.getElementById("workflowTitle").textContent = workflow.name;
+                document.getElementById("workflowStatus").textContent = workflow.isActive ? "Active" : "Inactive";
+                document.getElementById("schemaInfo").textContent =
+                    Object.keys(workflowSchema).length
+                        ? "Fields below are generated from the workflow input schema."
+                        : "No input schema found for this workflow.";
+
+                renderDynamicForm(workflowSchema);
+            } catch (error) {
+                document.getElementById("workflowTitle").textContent = "Failed to load workflow";
+                document.getElementById("workflowStatus").textContent = "Error";
+                document.getElementById("dynamicForm").innerHTML = `<p class="empty-row error-text">${error.message}</p>`;
+                document.getElementById("resultBox").innerHTML = `<span class="error-text">${error.message}</span>`;
+            }
+        }
+
+        function renderDynamicForm(schema) {
+            const formContainer = document.getElementById("dynamicForm");
+            const keys = Object.keys(schema);
+
+            if (!keys.length) {
+                formContainer.innerHTML = `<p class="empty-row">No input fields available for this workflow.</p>`;
+                return;
+            }
+
+            formContainer.innerHTML = keys.map(key => {
+                const config = schema[key] || {};
+                const type = (config.type || "string").toLowerCase();
+                const required = config.required ? "required" : "";
+                const label = formatLabel(key);
+                const placeholder = `Enter ${label.toLowerCase()}`;
+
+                if (Array.isArray(config.allowed_values) && config.allowed_values.length) {
+                    return `
+                        <div class="form-group">
+                            <label for="field_${key}">${label}${config.required ? " *" : ""}</label>
+                            <select id="field_${key}" data-field="${key}" data-type="${type}" ${required}>
+                                ${config.allowed_values.map(value => `<option value="${value}">${value}</option>`).join("")}
+                            </select>
+                        </div>
+                    `;
+                }
+
+                if (type === "number") {
+                    return `
+                        <div class="form-group">
+                            <label for="field_${key}">${label}${config.required ? " *" : ""}</label>
+                            <input type="number" id="field_${key}" data-field="${key}" data-type="${type}" placeholder="${placeholder}" ${required}>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="form-group">
+                        <label for="field_${key}">${label}${config.required ? " *" : ""}</label>
+                        <input type="text" id="field_${key}" data-field="${key}" data-type="${type}" placeholder="${placeholder}" ${required}>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function executeWorkflow() {
+            const resultBox = document.getElementById("resultBox");
+            const payloadData = {};
+            const fields = document.querySelectorAll("[data-field]");
+
+            for (const field of fields) {
+                const fieldName = field.getAttribute("data-field");
+                const fieldType = field.getAttribute("data-type");
+                const rawValue = field.value.trim();
+                const config = workflowSchema[fieldName] || {};
+
+                if (config.required && !rawValue) {
+                    resultBox.innerHTML = `<span class="error-text">${formatLabel(fieldName)} is required.</span>`;
+                    return;
+                }
+
+                if (!rawValue) {
+                    payloadData[fieldName] = "";
+                    continue;
+                }
+
+                payloadData[fieldName] = fieldType === "number" ? Number(rawValue) : rawValue;
+            }
+
+            resultBox.textContent = "Executing workflow...";
+
+            const payload = { data: payloadData };
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows/${workflowId}/execute`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Execution failed");
+                }
+
+                const execution = result.data;
+
+                resultBox.innerHTML = `
+                    <div class="result-success">
+                        <p><strong>Execution ID:</strong> ${execution.id}</p>
+                        <p><strong>Status:</strong> ${execution.status}</p>
+                        <p><strong>Workflow:</strong> ${execution.workflowName}</p>
+                        <p><strong>Started At:</strong> ${formatDate(execution.startedAt)}</p>
+                        <div class="form-actions top-gap">
+                            <button class="primary-btn" onclick="viewLogs('${execution.id}')">View Logs</button>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                resultBox.innerHTML = `<span class="error-text">${error.message}</span>`;
+            }
+        }
+
+        function formatLabel(key) {
+            return key
+                .replace(/([A-Z])/g, " $1")
+                .replace(/^./, letter => letter.toUpperCase());
+        }
+
+        function viewLogs(executionId) {
+            window.location.href = `execution-logs.html?id=${executionId}`;
+        }
+
+        function goHome() {
+            window.location.href = "index.html";
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return "-";
+            return new Date(dateString).toLocaleString();
+        }
+
+        loadWorkflow();
+    </script>
+</body>
+</html>

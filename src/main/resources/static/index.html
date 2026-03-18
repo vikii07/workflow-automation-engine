@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Automation Engine</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero">
+            <div>
+                <p class="eyebrow">Halleyx Challenge</p>
+                <h1>Workflow Automation Engine</h1>
+                <p class="subtitle">Design, execute, and monitor business workflows from one dashboard.</p>
+            </div>
+            <div class="hero-actions">
+                <button class="secondary-btn" onclick="goToExecutions()">Execution History</button>
+                <button class="primary-btn" onclick="goToCreate()">Create Workflow</button>
+            </div>
+        </header>
+
+        <section class="toolbar card">
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="Search workflows by name"
+                oninput="filterWorkflows()"
+            />
+            <button class="secondary-btn" onclick="loadWorkflows()">Refresh</button>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Available Workflows</h2>
+                <span id="workflowCount" class="count-badge">0 workflows</span>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                            <th>Steps</th>
+                            <th>Created At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="workflowTableBody">
+                        <tr>
+                            <td colspan="6" class="empty-row">Loading workflows...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE = "";
+        let workflowList = [];
+
+        async function loadWorkflows() {
+            const tableBody = document.getElementById("workflowTableBody");
+            tableBody.innerHTML = `<tr><td colspan="6" class="empty-row">Loading workflows...</td></tr>`;
+
+            try {
+                const response = await fetch(`${API_BASE}/workflows`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || "Failed to load workflows");
+                }
+
+                workflowList = result.data.content || [];
+                renderWorkflows(workflowList);
+            } catch (error) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="empty-row error-text">${error.message}</td></tr>`;
+            }
+        }
+
+        function renderWorkflows(workflows) {
+            const tableBody = document.getElementById("workflowTableBody");
+            const countBadge = document.getElementById("workflowCount");
+
+            countBadge.textContent = `${workflows.length} workflow${workflows.length !== 1 ? "s" : ""}`;
+
+            if (!workflows.length) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="empty-row">No workflows found.</td></tr>`;
+                return;
+            }
+
+            tableBody.innerHTML = workflows.map(workflow => `
+                <tr>
+                    <td>${workflow.name}</td>
+                    <td>v${workflow.version}</td>
+                    <td>
+                        <span class="status-badge ${workflow.isActive ? 'active' : 'inactive'}">
+                            ${workflow.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>${workflow.stepCount}</td>
+                    <td>${formatDate(workflow.createdAt)}</td>
+                    <td class="actions">
+                        <button class="table-btn view-btn" onclick="goToView('${workflow.id}')">View</button>
+                        <button class="table-btn execute-btn" onclick="goToExecute('${workflow.id}')">Execute</button>
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        function filterWorkflows() {
+            const searchValue = document.getElementById("searchInput").value.toLowerCase().trim();
+
+            const filtered = workflowList.filter(workflow =>
+                workflow.name.toLowerCase().includes(searchValue)
+            );
+
+            renderWorkflows(filtered);
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return "-";
+            return new Date(dateString).toLocaleString();
+        }
+
+        function goToCreate() {
+            window.location.href = "workflow-editor.html";
+        }
+
+        function goToExecutions() {
+            window.location.href = "executions.html";
+        }
+
+        function goToView(id) {
+            window.location.href = `workflow-editor.html?id=${id}`;
+        }
+
+        function goToExecute(id) {
+            window.location.href = `execute.html?id=${id}`;
+        }
+
+        loadWorkflows();
+    </script>
+</body>
+</html>

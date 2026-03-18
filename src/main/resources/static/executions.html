@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executions</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="hero small-hero">
+            <div>
+                <p class="eyebrow">Execution History</p>
+                <h1>Workflow Executions</h1>
+                <p class="subtitle">Track active and archived workflow runs.</p>
+            </div>
+            <button class="secondary-btn" onclick="goHome()">Back</button>
+        </header>
+
+        <section class="toolbar card">
+            <button class="secondary-btn" onclick="loadExecutions()">Refresh</button>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Active Executions</h2>
+                <span id="executionCount" class="count-badge">0 executions</span>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Execution ID</th>
+                            <th>Workflow</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                            <th>Started At</th>
+                            <th>Ended At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="executionTableBody">
+                        <tr>
+                            <td colspan="7" class="empty-row">Loading executions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-head">
+                <h2>Archived Executions</h2>
+                <span id="archivedCount" class="count-badge">0 archived</span>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Execution ID</th>
+                            <th>Workflow</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                            <th>Started At</th>
+                            <th>Ended At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="archivedTableBody">
+                        <tr>
+                            <td colspan="7" class="empty-row">Loading archived executions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE = "";
+
+        async function loadExecutions() {
+            await Promise.all([loadActiveExecutions(), loadArchivedExecutions()]);
+        }
+
+        async function loadActiveExecutions() {
+            const tableBody = document.getElementById("executionTableBody");
+            const countBadge = document.getElementById("executionCount");
+            tableBody.innerHTML = `<tr><td colspan="7" class="empty-row">Loading executions...</td></tr>`;
+
+            try {
+                const response = await fetch(`${API_BASE}/executions`);
+                const result = await response.json();
+
+                if (!result.success) throw new Error(result.message || "Failed to load executions");
+
+                const executions = result.data.content || [];
+                countBadge.textContent = `${executions.length} execution${executions.length !== 1 ? "s" : ""}`;
+
+                if (!executions.length) {
+                    tableBody.innerHTML = `<tr><td colspan="7" class="empty-row">No executions found.</td></tr>`;
+                    return;
+                }
+
+                tableBody.innerHTML = executions.map(execution => `
+                    <tr>
+                        <td>${execution.id}</td>
+                        <td>${execution.workflowName || "-"}</td>
+                        <td>v${execution.workflowVersion || "-"}</td>
+                        <td><span class="status-badge ${getStatusClass(execution.status)}">${execution.status || "UNKNOWN"}</span></td>
+                        <td>${formatDate(execution.startedAt)}</td>
+                        <td>${formatDate(execution.endedAt)}</td>
+                        <td class="actions">
+                            <button class="table-btn view-btn" onclick="viewLogs('${execution.id}')">View Logs</button>
+                            <button class="table-btn secondary-btn" onclick="archiveExecution('${execution.id}')">Delete</button>
+                        </td>
+                    </tr>
+                `).join("");
+            } catch (error) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="empty-row error-text">${error.message}</td></tr>`;
+            }
+        }
+
+        async function loadArchivedExecutions() {
+            const tableBody = document.getElementById("archivedTableBody");
+            const countBadge = document.getElementById("archivedCount");
+            tableBody.innerHTML = `<tr><td colspan="7" class="empty-row">Loading archived executions...</td></tr>`;
+
+            try {
+                const response = await fetch(`${API_BASE}/executions/archived`);
+                const result = await response.json();
+
+                if (!result.success) throw new Error(result.message || "Failed to load archived executions");
+
+                const executions = result.data.content || [];
+                countBadge.textContent = `${executions.length} archived`;
+
+                if (!executions.length) {
+                    tableBody.innerHTML = `<tr><td colspan="7" class="empty-row">No archived executions.</td></tr>`;
+                    return;
+                }
+
+                tableBody.innerHTML = executions.map(execution => `
+                    <tr>
+                        <td>${execution.id}</td>
+                        <td>${execution.workflowName || "-"}</td>
+                        <td>v${execution.workflowVersion || "-"}</td>
+                        <td><span class="status-badge ${getStatusClass(execution.status)}">${execution.status || "UNKNOWN"}</span></td>
+                        <td>${formatDate(execution.startedAt)}</td>
+                        <td>${formatDate(execution.endedAt)}</td>
+                        <td class="actions">
+                            <button class="table-btn view-btn" onclick="viewLogs('${execution.id}')">View Logs</button>
+                        </td>
+                    </tr>
+                `).join("");
+            } catch (error) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="empty-row error-text">${error.message}</td></tr>`;
+            }
+        }
+
+        async function archiveExecution(id) {
+            const ok = confirm("Move this execution to archived history?");
+            if (!ok) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/executions/${id}/archive`, {
+                    method: "POST"
+                });
+                const result = await response.json();
+
+                if (!result.success) throw new Error(result.message || "Failed to archive execution");
+
+                await loadExecutions();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        function getStatusClass(status) {
+            if (!status) return "inactive";
+            const value = status.toUpperCase();
+            if (value === "COMPLETED" || value === "SUCCESS" || value === "RUNNING") return "active";
+            return "inactive";
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return "-";
+            return new Date(dateString).toLocaleString();
+        }
+
+        function viewLogs(executionId) {
+            window.location.href = `execution-logs.html?id=${executionId}`;
+        }
+
+        function goHome() {
+            window.location.href = "index.html";
+        }
+
+        loadExecutions();
+    </script>
+</body>
+</html>
